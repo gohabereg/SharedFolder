@@ -1,23 +1,32 @@
 package com.gohabereg;
-
 import com.gohabereg.net.Client;
 import com.gohabereg.net.Server;
 import com.gohabereg.watcher.Watcher;
 
 import java.io.*;
 import java.nio.file.*;
+import java.util.ArrayList;
 
 public class Main {
 
     public static void main(String[] args) throws IOException {
 
-        if ("server".equals(args[0])) {
-            System.out.println("Server");
-            new Server(8000);
-        } else {
-            Path dir = Paths.get(args[1]);
-            System.out.println("Client");
-            new Watcher(dir, true).processEvents();
-        }
+        String folder = args[0];
+        int port = Integer.parseInt(args[1]);
+
+        ArrayList<Path> filesToNotCheck = new ArrayList<Path>();
+
+        Path dir = Paths.get(folder);
+        Client client = new Client("localhost", Integer.parseInt(args[2]));
+        Watcher watcher = new Watcher(dir, true, filesToNotCheck, client);
+
+        Thread clientThread = new Thread(client);
+        Thread watcherThread = new Thread(watcher);
+
+        clientThread.start();
+        watcherThread.start();
+
+        Thread serverThread = new Thread(new Server(port, filesToNotCheck, watcher));
+        serverThread.start();
     }
 }

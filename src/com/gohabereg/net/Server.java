@@ -1,35 +1,38 @@
 package com.gohabereg.net;
 
-import com.gohabereg.net.io.CustomReader;
+import com.gohabereg.net.io.Receiver;
+import com.gohabereg.watcher.Watcher;
 
 import java.io.*;
 import java.net.*;
+import java.nio.file.Path;
+import java.util.ArrayList;
 
-public class Server extends Thread {
-//    private ServerSocket serverSocket;
-//    private Socket clientSocket;
-//    private PrintWriter out;
-//    BufferedReader in;
+public class Server implements Runnable {
+    private ArrayList<Path> filesNotToCheck;
+    private Watcher watcher;
+    private int port;
 
-    public Server(Integer port) {
-        try (
+    public Server(int port, ArrayList<Path> filesNotToCheck, Watcher watcher) {
+        this.port = port;
+        this.filesNotToCheck = filesNotToCheck;
+        this.watcher = watcher;
+    }
+
+    @Override
+    public void run() {
+        System.out.format("Starting server on %d port\n", port);
+
+        try {
             ServerSocket serverSocket = new ServerSocket(port);
             Socket clientSocket = serverSocket.accept();
-//            PrintWriter out = new PrintWriter(clientSocket.getOutputStream(), true);
             InputStream in = clientSocket.getInputStream();
-        ) {
             System.out.println("Client connected");
 
-            Thread listener = new Thread(new CustomReader(new DataInputStream(in)));
-            listener.start();
-
-            while (true) {
-
-            }
+            new Receiver(new DataInputStream(in), filesNotToCheck, watcher).run();
         } catch (IOException e) {
             System.out.println("Exception caught when trying to listen on port " + port + " or listening for a connection");
             System.out.println(e.getMessage());
         }
     }
-
 }

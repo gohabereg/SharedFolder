@@ -9,7 +9,8 @@ import java.nio.file.attribute.*;
 import java.io.*;
 import java.util.*;
 
-public class Watcher {
+public class Watcher implements Runnable {
+    private final ArrayList<Path> filesNotToCheck;
     private WatchService watcher;
     private Map<WatchKey, Path> keys;
     private boolean recursive;
@@ -37,7 +38,7 @@ public class Watcher {
         keys.put(key, dir);
     }
 
-    private void registerAll(Path start) throws IOException {
+    public void registerAll(Path start) throws IOException {
         Files.walkFileTree(start, new SimpleFileVisitor<Path>() {
             @Override
             public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
@@ -47,11 +48,12 @@ public class Watcher {
         });
     }
 
-    public Watcher(Path dir, boolean recursive) throws IOException {
+    public Watcher(Path dir, boolean recursive, ArrayList<Path> filesNotToCheck, Client client) throws IOException {
         this.watcher = FileSystems.getDefault().newWatchService();
         this.keys = new HashMap<WatchKey, Path>();
         this.recursive = recursive;
-        this.client = new Client("localhost", 8000);
+        this.client = client;
+        this.filesNotToCheck = filesNotToCheck;
 
         if (recursive) {
             System.out.format("Scanning %s ...\n", dir);
@@ -64,23 +66,30 @@ public class Watcher {
         this.trace = true;
     }
 
-    public void processEvents() {
-        for (;;) {
+    @Override
+    public void run() {
+        while (true) {
             WatchKey key;
+
             try {
                 key = watcher.take();
+            } catch(ClosedWatchServiceException x) {
+                System.out.println("Closed");
+                return;
             } catch(InterruptedException x) {
+                System.out.println("Interrupted");
                 return;
             }
 
             Path dir = keys.get(key);
             if (dir == null) {
-                System.err.println("WatchKey not recognized!");
+                System.err.println("WatchKey not recognized");
                 continue;
             }
 
+            List<WatchEvent<?>> events = key.pollEvents();
 
-            for (WatchEvent<?> event: key.pollEvents()) {
+            for (WatchEvent<?> event: events) {
                 WatchEvent.Kind kind = event.kind();
 
                 if (kind == OVERFLOW) {
@@ -91,31 +100,45 @@ public class Watcher {
                 Path name = ev.context();
                 Path child = dir.resolve(name);
 
+                if (!filesNotToCheck.contains(child)) {
 
-                System.out.format("%s: %s\n", kind.name(), child);
+                    System.out.format("%s (isDirectory: %b): %s\n", kind.name(), Files.isDirectory(child), child);
 
-                if (!Files.isDirectory(child)) {
+                    byte type;
+
                     switch (kind.name()) {
                         case "ENTRY_CREATE":
-                            client.sendEvent((byte)0, child.toString());
+                            type = 0;
+                            if (Files.isDirectory(child)) {
+                                type = 3;
+                            }
+
+                            client.sendEvent(type, child.toString());
                             break;
                         case "ENTRY_MODIFY":
-                            client.sendEvent((byte)1, child.toString());
+                            type = 1;
+                            if (Files.exists(child) && !Files.isDirectory(child)) {
+                                client.sendEvent(type, child.toString());
+                            }
                             break;
                         case "ENTRY_DELETE":
-                            client.sendEvent((byte)2, child.toString());
+                            type = 2;
+                            client.sendEvent(type, child.toString());
                             break;
                     }
-                }
 
-                if (recursive && (kind == ENTRY_CREATE)) {
-                    try {
-                        if (Files.isDirectory(child, NOFOLLOW_LINKS)) {
-                            registerAll(child);
+                    if (recursive && (kind == ENTRY_CREATE)) {
+                        try {
+                            if (Files.isDirectory(child, NOFOLLOW_LINKS)) {
+                                registerAll(child);
+                            }
+                        } catch (IOException x) {
+
                         }
-                    } catch (IOException x) {
-
                     }
+
+                } else {
+                    filesNotToCheck.remove(child);
                 }
 
                 boolean valid = key.reset();
@@ -124,6 +147,7 @@ public class Watcher {
                     keys.remove(key);
 
                     if (keys.isEmpty()) {
+                        System.out.println("Keys is empty");
                         break;
                     }
                 }
