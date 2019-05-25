@@ -7,15 +7,16 @@ import java.io.*;
 import java.net.*;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.concurrent.Semaphore;
 
 public class Server implements Runnable {
-    private ArrayList<Path> filesNotToCheck;
+    private Semaphore semaphore;
     private Watcher watcher;
     private int port;
 
-    public Server(int port, ArrayList<Path> filesNotToCheck, Watcher watcher) {
+    public Server(int port, Semaphore semaphore, Watcher watcher) {
         this.port = port;
-        this.filesNotToCheck = filesNotToCheck;
+        this.semaphore = semaphore;
         this.watcher = watcher;
     }
 
@@ -29,7 +30,7 @@ public class Server implements Runnable {
             InputStream in = clientSocket.getInputStream();
             System.out.println("Client connected");
 
-            new Receiver(new DataInputStream(in), filesNotToCheck, watcher).run();
+            new Receiver(new DataInputStream(in), semaphore, watcher).run();
         } catch (IOException e) {
             System.out.println("Exception caught when trying to listen on port " + port + " or listening for a connection");
             System.out.println(e.getMessage());

@@ -6,17 +6,18 @@ import java.io.*;
 import java.nio.file.*;
 import java.nio.file.attribute.*;
 import java.util.ArrayList;
+import java.util.concurrent.Semaphore;
 
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 public class Receiver implements Runnable {
-    private ArrayList<Path> filesNotToCheck;
+    private Semaphore semaphore;
     private Watcher watcher;
     private DataInputStream reader;
 
-    public Receiver(DataInputStream reader, ArrayList<Path> filesNotToCheck, Watcher watcher) {
+    public Receiver(DataInputStream reader, Semaphore semaphore, Watcher watcher) {
         this.reader = reader;
-        this.filesNotToCheck = filesNotToCheck;
+        this.semaphore = semaphore;
         this.watcher = watcher;
     }
 
@@ -35,8 +36,7 @@ public class Receiver implements Runnable {
 
                 String  name = reader.readUTF();
 
-                filesNotToCheck.add(Paths.get(name));
-
+                semaphore.acquire();
 
                 switch (eventType) {
                     case 0:
@@ -59,10 +59,12 @@ public class Receiver implements Runnable {
                         createDirectory(name);
                         break;
                 }
+
+                semaphore.release();
             } catch (IOException e) {
                 System.out.println("Error");
                 System.out.println(e.getMessage());
-            }
+            } catch (InterruptedException x) {}
         }
     }
 

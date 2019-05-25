@@ -41,6 +41,10 @@ public class Client implements Runnable {
     public void sendEvent(byte type, String name) {
         System.out.println("Sending " + type + " event with file " + name);
 
+        if (this.out == null) {
+            return;
+        }
+
         try {
             this.out.writeByte(type);
             this.out.writeUTF(name);

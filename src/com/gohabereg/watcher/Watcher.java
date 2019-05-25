@@ -8,9 +8,10 @@ import static java.nio.file.LinkOption.*;
 import java.nio.file.attribute.*;
 import java.io.*;
 import java.util.*;
+import java.util.concurrent.Semaphore;
 
 public class Watcher implements Runnable {
-    private final ArrayList<Path> filesNotToCheck;
+    private Semaphore semaphore;
     private WatchService watcher;
     private Map<WatchKey, Path> keys;
     private boolean recursive;
@@ -48,12 +49,12 @@ public class Watcher implements Runnable {
         });
     }
 
-    public Watcher(Path dir, boolean recursive, ArrayList<Path> filesNotToCheck, Client client) throws IOException {
+    public Watcher(Path dir, boolean recursive, Semaphore semaphore, Client client) throws IOException {
         this.watcher = FileSystems.getDefault().newWatchService();
         this.keys = new HashMap<WatchKey, Path>();
         this.recursive = recursive;
         this.client = client;
-        this.filesNotToCheck = filesNotToCheck;
+        this.semaphore = semaphore;
 
         if (recursive) {
             System.out.format("Scanning %s ...\n", dir);
@@ -100,7 +101,8 @@ public class Watcher implements Runnable {
                 Path name = ev.context();
                 Path child = dir.resolve(name);
 
-                if (!filesNotToCheck.contains(child)) {
+
+                if (semaphore.availablePermits() == 1) {
 
                     System.out.format("%s (isDirectory: %b): %s\n", kind.name(), Files.isDirectory(child), child);
 
@@ -137,8 +139,6 @@ public class Watcher implements Runnable {
                         }
                     }
 
-                } else {
-                    filesNotToCheck.remove(child);
                 }
 
                 boolean valid = key.reset();
